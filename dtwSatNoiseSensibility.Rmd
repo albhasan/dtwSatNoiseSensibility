@@ -1,0 +1,300 @@
+---
+title: "On the quality of sets of TWDTW patterns"
+author: "Alber Sánchez and Victor Maus and Gilberto Camara."
+output: html_notebook
+---
+
+```{r chunk_preliminar, include=FALSE}
+#-------------------------------------------------------------------------------
+# preliminar
+#-------------------------------------------------------------------------------
+require(dtwSat)
+require(knitr)
+source("util.R")
+att <- "evi"                                                                    # attribute used to filter the given time-series
+```
+
+
+
+
+# Abstract{#abstract}
+
+Time Weighted Dynamic Time Warping (TWDTW) is a supervised time-series classification method. As such, the quality of the classification results depend on the quality of the classification patterns. In this document, we introduce a method for assessing the quality of TWDTW patterns, understanding quality as the ability of one pattern to be discernible from others in the same set. To achieve this, we propose an index that measures the discernibility of a single pattern in a set. Then, we evaluate the behavior of the index under different amounts of noise in time series. Such method can be though of a noise-sensibility analysis of sets of TWDTW patterns.
+
+
+
+# Introduction{#introduction}
+
+Time Weighted Dynamic Time Warping (TWDTW) is a supervised time-series classification method which adapts the well-known Dynamic Time Warping algorithm (DTW) to Earth observation data. It was developed by Victor Maus at the Brazilian National Institute for Space Research - [INPE](http://www.inpe.br/ingles/). TWDTW description is available on-line [here](https://cran.r-project.org/web/packages/dtwSat/vignettes/applying_twdtw.pdf) and it has an open source implementation for the R free software environment for statistical computing and graphics [here](https://cran.r-project.org/web/packages/dtwSat/index.html) through the ***dtwSat*** package. The Time Weighted part of TWDTW refers to a way to control the distance in time the algorithm searches for a match, this enables the application of this method to Earth observation data. The implementation of the weight could be of two types, linear of logistic; however the logistic is know to produce better results than the linear function.
+
+As any supervised method, TWDTW requires two sets of time-series: patterns and targets. The algorithm searches the targets identifying the similarity with the patters. The output of this method are the dissimilarity between the patterns and segments of the target time-series --- this is called the TWDTW distance --- and the places where the pattern deviates from the target time-series. You can find below some patterns made of time-series of MODIS data.
+
+
+```{r chunk_plotPatterns, echo=FALSE}
+#-------------------------------------------------------------------------------
+# plot sample patterns
+#-------------------------------------------------------------------------------
+#patterns.list <- yearly_patterns_mt                                            # switch to the other example set
+patterns_ts <-  twdtwTimeSeries(filterTS(patterns.list, att))                   # get timeseries of a single attribute
+plot(patterns_ts, type = "patterns")
+```
+
+
+See below a sample target time-series made of MODIS data.
+
+
+```{r chunk_plotSampleTS, echo=FALSE}
+#-------------------------------------------------------------------------------
+# plot sample target timeseries
+#-------------------------------------------------------------------------------
+ts <- twdtwTimeSeries(filterTS(list(example_ts), att), labels="Time series")
+plot(ts, type = "timeseries") + annotate(
+  geom = "text", x = example_ts_labels$from+90, 
+  y = 0.98, label = example_ts_labels$label, size = 2
+)
+```
+
+
+The results of applying TWDTW to the data' EVI above are below.
+
+
+```{r chunk_sampleClassification, echo=FALSE, message=FALSE, warning=FALSE}
+#-------------------------------------------------------------------------------
+# classify the target TS using the sample patterns
+#-------------------------------------------------------------------------------
+matches <- twdtwApply(x = ts, y = patterns_ts, 
+                      weight.fun = logisticWeight(alpha = -0.1, beta = 100), 
+                      keep=TRUE
+)
+slotNames(matches)
+show(matches)
+print(plot(matches, type="alignments", attr = att, threshold = 3.0))
+```
+
+
+
+# Time-series creation from patterns{#time-series}
+
+
+
+As any supervised classification method, TWDTW requires users to provide *a priori* patterns. It is hard to come with optimal patterns before classification. For this reason, we want to find out how much noise TWDTW patterns stand before losing its classificatory capabilities.
+
+We start with the patterns provided by the *dtwSat* package. We produce target time series by repeating each patterns ten times, having in mind each pattern is expected to happen once a year. For example, below you find the pattern and the time-series built by repeating the pattern several times. We can use such time-series as a baseline to test classification patterns in a controlled environment.
+
+
+```{r chunk_buildTSpatterns, echo=FALSE}
+#-------------------------------------------------------------------------------
+# build timeseries by repeating the patterns
+#-------------------------------------------------------------------------------
+nyears <- 10
+patt.list <- filterTS(zoo.list = patterns.list, att = att)                      # attribute-filtered patterns
+timeseries.list <- lapply(patt.list, extendTS, nyears = nyears)                 # build repeated time series
+timeseries.list <- lapply(timeseries.list, na.approx)                           # replace NA with linear interpolation
+pname.list <- as.list(names(timeseries.list))
+names(timeseries.list) <- paste(names(timeseries.list), "-ts", sep = "")
+```
+
+
+
+```{r chunk_plotSampleTSpatterns, echo=FALSE}
+#-------------------------------------------------------------------------------
+# plot a sample pattern and its timeseries
+#-------------------------------------------------------------------------------
+plot(patt.list[[3]], main = paste(pname.list[[3]], "pattern", sep = " "), ylab = "value")
+plot(timeseries.list[[3]], main = paste("Pattern timeseries", "-", names(timeseries.list)[3], sep = " "), ylab = "value")
+```
+
+
+
+# Base-line classification{#base-line}
+
+
+
+The dtwSat package provides the linear and logistic functions to assign weights during the calculation of the TWDTW computations.
+
+
+```{r cunk_plotWeightFunctions, echo=FALSE}
+#-------------------------------------------------------------------------------
+# TWDTW weight functions
+#-------------------------------------------------------------------------------
+lf.alfa <- -0.1                                                                 # alpha parameter of the logistic weight function
+lf.beta <- 100                                                                  # beta parameter of the logistic weight function. It is half the time to get th highest weight using the logistic function
+log_weight <- logisticWeight(alpha = lf.alfa, beta = lf.beta)                   # logistic function
+lin_weight <- linearWeight(a = 1/(lf.beta * 2), b = 0)                          # linear function
+#-------------------------------------------------------------------------------
+# plot TWDTW weight functions
+#-------------------------------------------------------------------------------
+ndays <- 0:(lf.beta * 2)                                                        # number of days to plot
+log_res <- log_weight(psi = ndays)
+lin_res <- lin_weight(psi = ndays)
+plot(x = ndays, y = log_res, type = "l", 
+     xlab = "Time difference (days)", ylab = "Weight",
+     main = "TWDTW weight functions"
+)
+lines(x = ndays, y = lin_res, type = "l", lty = 2)
+legend('topleft', c("Logistic function", "Linear function"), 
+       lty = c(1, 2), bty='n'
+)
+```
+
+
+The figure above shows both the logistic and the linear weight functions provided by the *dtwSat* package. The package documentation recommends the use of the logistic function, so, we use it. 
+
+We classify the pattern-based time-series. We expect TWDTW to find certain alignments of the pattern. 
+
+```{r chunk_twdtwPatternTSclassification, echo=FALSE}
+#-------------------------------------------------------------------------------
+# pattern-timeseries classification
+#-------------------------------------------------------------------------------
+match.list <- lapply(timeseries.list, 
+                     function(ts.zoo, patterns_ts, fun_weight){
+                       ts <- twdtwTimeSeries(ts.zoo, labels="Time series")
+                       matches <- twdtwApply(x = ts, y = patterns_ts, 
+                                             weight.fun = fun_weight, keep=TRUE
+                       )
+                       return(matches)
+                     }, 
+                     patterns_ts = patterns_ts, 
+                     fun_weight = log_weight
+)
+#-------------------------------------------------------------------------------
+# plot the results of the classification
+#-------------------------------------------------------------------------------
+for(i in 1:length(names(timeseries.list))){
+  print(
+    plot(match.list[[i]], type="alignments", threshold = 20.0, attr = "evi") + 
+      ggtitle(paste("Baseline for", names(timeseries.list)[i], sep = " "))
+  )
+}
+#-------------------------------------------------------------------------------
+# show the summary of the classification
+#-------------------------------------------------------------------------------
+match.mat <- matchmatrix(match.list = match.list)
+kable(match.mat)
+```
+
+
+The figures above present the baseline classification of Soybean, Cotton, and Maize. The table summarizes the alignments and it is NOT a confusion matrix. It is the summary of the number of alignments obtained by applying the TWDTW --- using the logistic weight function --- to the time-series build by repeating the patterns. 
+
+
+# Assesment of the classification quality 
+
+
+From the discussion above, we can think of a index to asses the quality of sets of TWDTW patterns. Besides the TWDTW distance, such index should include the number and duration of the expected versus the obtained alignments. 
+
+The quality assessment of a set of TWDTW patterns result calculating the quality index to the pattern time-series and the sensibility analysis is the behavior of the index after injecting different amounts of noise to the pattern time-series.
+
+
+```{r chunk_computeMetrics, echo=FALSE}
+#-------------------------------------------------------------------------------
+# compute metrics
+#-------------------------------------------------------------------------------
+metrics.list <- computeMetrics(match.list)
+durmetric.df <- metrics.list[[1]]
+dismetric.df <- metrics.list[[2]]
+```
+
+
+We propose a duration metric as a component of the assesment index of TWDTW patterns. Here, by duration we mean the number of observations. Such duration metric is the propotion of the pattern and each aligment found in the pattern time-series. This metric represents the amount of *warping* required in the aligments to match the patterns.
+
+
+```{r cunk_displayDuration, echo=FALSE}
+#-------------------------------------------------------------------------------
+# show duration metric
+#-------------------------------------------------------------------------------
+kable(durmetric.df, digits = 2)
+```
+
+
+The table above summarizes the duration metric of our proposed index for our three example patterns (Soybean, Cotton, Maize). The abbreviation *dm* stands for *duration metric*. A perfect match between a pattern and an aligment is one. Less than one imples the aligment shrinks in order to match the pattern. Since we are using pattern time-series, we expect the duration metric in our eaxmples to be less than one.
+
+
+```{r cunk_displayTWDTWdistance, echo=FALSE}
+#-------------------------------------------------------------------------------
+# show TWDTW distance metric 
+#-------------------------------------------------------------------------------
+kable(dismetric.df, digits = 2)
+```
+
+
+Similary, the table above summarizes the TWDTW distance of our three example patterns. The abbreviation *tm* stands for *TWDTW distance*.
+
+
+## The index
+
+
+The TWDTW distance accounts for the pattern-alignment similarity, the duration metric accounts for half-alignments, and the total number of aligments accounts for false positives and the increasing cummulative effect in the TWDTW distance. In this way, the index includes the possible outcomes and issues described above.
+
+Now we need to combine the number of alignments and the duration metric along the TWDTW distance to represent the ability of each individual pattern to classify in the presence of other patterns.
+
+In the best case escenario --- that is, a close match between a pattern and an alignment--- the TWDTW distance tends to zero, but the duration metric tends to one. Besides, the number of aligments tend to the number of pattern repetitions in the time-series. That is 10 in our example. Being this the case, the ration of the sum o the duration metric and the number of pattern repetition in the time series tend to one.
+
+
+```{r cunk_indexComputationDTW, echo=FALSE}
+#-------------------------------------------------------------------------------
+# compute index
+#-------------------------------------------------------------------------------
+durmetric.df["dm.index"] <- durmetric.df$dm.sum/nyears
+index.df <- durmetric.df[, c("time_series", "match", "dm.index")]
+index.df["td.mean"] <- dismetric.df$td.mean
+kable(index.df, digits = 2)
+```
+
+
+The table above presents the index results for the DTW classification, that is the TWDTW algorithm with no weight function. The DTW mean distance is zero and the duration metric index is 1 for the right aligments.
+
+
+# Noisy classification example{#noisyclassification}
+
+
+We added Gaussian white noise to the Maize pattern time-series with standard deviations (SD) of 1%, 5%, 10%, and 15%. Remember the Maize pattern time-series was build by repeating the Maize pattern 10 times.
+
+
+```{r chunk_twdtwPatternTSclassificationNOISE, echo=FALSE}
+#-------------------------------------------------------------------------------
+# add noise to time-series
+# NOTE: too much noise breaks the function qualitymatrix
+#-------------------------------------------------------------------------------
+sd.vec <- c(0.01, 0.05, 0.1, 0.15) # NOTE: keep it belo 0.2
+chosenTS <- 3                                                                   # chosen time series to test
+ts.z <- timeseries.list[[chosenTS]]
+match.list <- list()
+index.list <- list()
+for(j in 1:length(sd.vec)){
+  # plot
+  ts.zoo <- zoo(x = coredata(ts.z) + rnorm(
+    n = nrow(coredata(ts.z)), 
+    mean = 0, sd = sd.vec[j]
+  ), 
+  order.by = index(ts.z)
+  )
+  ts <- twdtwTimeSeries(ts.zoo, labels="Time series")
+  matches <- twdtwApply(x = ts, y = patterns_ts, weight.fun = log_weight, keep=TRUE)
+  print(
+    plot(matches, type="alignments", attr = "evi", threshold = 3.0) + 
+      ggtitle(paste(names(timeseries.list)[chosenTS], "Noise SD = ", sd.vec[j], sep = " "))
+  )
+  # compute metric
+  match.list[[names(timeseries.list)[chosenTS]]] <- matches
+  metrics.list <- computeMetrics(match.list)
+  durmetric.df <- metrics.list[[1]]
+  dismetric.df <- metrics.list[[2]]
+  durmetric.df["dm.index"] <- durmetric.df$dm.sum/nyears
+  index.df <- durmetric.df[, c("time_series", "match", "alignments", "dm.index")]
+  index.df["td.mean"] <- dismetric.df$td.mean
+  index.list[[j]] <- index.df
+  print(kable(index.df, digits = 2, caption = paste(names(timeseries.list)[chosenTS], "Noise SD = ", sd.vec[j], sep = " ")))
+}
+
+```
+
+The figures above show the results of the classification of a single pattern time-series under different white noise effects. It can be seen how the classificatory capacity of TWDTW diminishes as more the TWDTW distances of overlapping alignments decrease. The tables present the indexes for the TWDTW classification of a pattern time-series at different levels of noise.
+
+
+## Conclusions{#conclusions}
+
+We presented a method to evaluate the quality of sets of TWDTW patterns. This assessment depends exclusively on the patterns and it can be used to test TWDTW patterns before classifying real time-series. This method provides *a priori* estimation of the quality of a classification by revealing classes prone to confusion. Hence, this method can save time to analyst because identifying these issues on test time-series is more difficult. 
+
+A *a posteriori* knowledge of time a real time-series noise can reveal if a determined set of TWDTW patterns would produce good results. Such *a posteriori* estimation of noise can be obtained through other modeling or classification methods such as BFAST, which decomposes a time series into tend, seasonal and noise components.
+
+Our method can test the sensibility of sets of TWDTW patterns to noise in a simple way. To probe this, we  simulated a time-series by pattern repetition. The use of alignment duration metrics help remote sensing analyst to find the best combination of patterns to apply during a classification. 
