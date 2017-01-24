@@ -1,8 +1,4 @@
----
-title: "On the quality of sets of TWDTW patterns"
-author: "Alber Sánchez and Victor Maus and Gilberto Camara."
-output: html_notebook
----
+
 
 ```{r chunk_preliminar, include=FALSE}
 #-------------------------------------------------------------------------------
@@ -12,8 +8,8 @@ require(dtwSat)
 require(knitr)
 source("util.R")
 att <- "evi"                                                                    # attribute used to filter the given time-series
+knit_hooks$set(purl = hook_purl) # Save chunks to Rscript file  
 ```
-
 
 
 
