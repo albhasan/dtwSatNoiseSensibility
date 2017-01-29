@@ -35,6 +35,7 @@ classifyTwdtw <- function(weight.fun, timeseries.list, patterns_ts){
 }
 
 
+
 # extends a TWDTW pattern into nyears
 #
 # @param ts.zoo A zoo timeseries object
@@ -44,12 +45,21 @@ extendTS <- function(ts.zoo, nyears){
   p <- as.numeric(difftime(index(ts.zoo)[2], index(ts.zoo)[1], units = "days")) # time inbetween observations
   yvec <- rep(NA, times = 365/p)                                                # one year of NA observations
   yvec[1:nrow(coredata(ts.zoo))] <- coredata(ts.zoo)[, 1]                       # replace the actual observations in the vector
-  tsvec <- rep(yvec, times = nyears)                                            # vector made of yearly repetition of observations
-  seqDate <- seq.Date(from = index(ts.zoo)[1], by = p, length.out = length(tsvec)) # sequence of dates
+  tsvec <- rep(yvec, times = (nyears + 1))                                       # repeat the observations nyears
+  seqDate <- seq.Date(from = index(ts.zoo)[1], by = p, length.out = length(yvec)) # sequence of one year of dates
+  seqDate <- lapply(as.character(seqDate), function(d, nyears){                    # build sequence of dates
+    md <- substr(d, 5, nchar(d))
+    y <- as.numeric(substr(d, 1, 4))
+    as.Date(paste(y + 0:nyears, md, sep = ""))
+  }, 
+  nyears = nyears
+  )
+  seqDate <- as.Date(as.vector(do.call("rbind", seqDate)))
   tsmat <- as.matrix(tsvec)
   colnames(tsmat) <- colnames(coredata(ts.zoo))
   return(zoo(x = tsmat, order.by = seqDate))
 }
+
 
 
 # Filter the inner attributes of zoo time series
