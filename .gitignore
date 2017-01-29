@@ -35,3 +35,4 @@ vignettes/*.pdf
 
 # r notebook
 *.nb.html
+*.html

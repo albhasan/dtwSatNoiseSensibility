@@ -1,0 +1,12 @@
+---
+title: "A new method for assessing the quality of TWDTW patterns"
+author: "Alber Sánchez and Victor Maus and Gilberto Camara."
+output:   
+  md_document:
+    variant: markdown_github
+---
+
+## A new method for assessing the quality of TWDTW patterns
+
+```{r child = 'dtwSatNoiseSensibility.Rmd'}
+```
